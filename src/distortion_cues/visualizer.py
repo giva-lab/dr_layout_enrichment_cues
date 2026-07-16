@@ -14,6 +14,7 @@ from scipy.spatial import Voronoi
 
 import matplotlib as mpl
 from matplotlib.lines import Line2D
+from matplotlib.collections import LineCollection
 
 from matplotlib.colors import to_rgb
 
@@ -1741,4 +1742,675 @@ def plotly_3d_cubes_custom_colormap(
 
 
 #_____________________________
+
+#________________ Sensitivity & Robustness Analysis-----------------------------------------------------
+def plot_rank_comparison_fast(
+    X_R2,
+    res,
+    top_k=20,
+    background_percentile=80,
+    max_background_lines=3000,
+    max_scatter_points=50000,
+    show_labels=False,
+    save_path=None,
+):
+
+    pairs = res["pairs"]
+    rank_Rn = res["rank_Rn"]
+    rank_R2 = res["rank_R2"]
+    shift = res["shift"]
+    abs_shift = res["abs_shift"]
+    n_pairs = res["n_pairs"]
+    rho = res["rho"]
+
+    # =====================================================
+    # Colormaps
+    # =====================================================
+
+    norm_abs = mcolors.Normalize(
+        vmin=0,
+        vmax=abs_shift.max()
+    )
+
+    cmap_abs = plt.cm.plasma
+
+    norm_div = mcolors.TwoSlopeNorm(
+        vcenter=0,
+        vmin=shift.min(),
+        vmax=shift.max()
+    )
+
+    cmap_div = plt.cm.RdBu_r
+
+    # =====================================================
+    # Figure
+    # =====================================================
+
+    fig = plt.figure(figsize=(16, 13))
+    fig.patch.set_facecolor("#0f1117")
+
+    axes_color = "#1a1d27"
+    text_color = "#e8e8f0"
+    grid_color = "#2a2d3a"
+
+    gs = fig.add_gridspec(
+        2,
+        2,
+        hspace=0.38,
+        wspace=0.32,
+        left=0.07,
+        right=0.97,
+        top=0.91,
+        bottom=0.07,
+    )
+
+    ax = [
+        fig.add_subplot(gs[r, c])
+        for r in range(2)
+        for c in range(2)
+    ]
+
+    for a in ax:
+
+        a.set_facecolor(axes_color)
+
+        for spine in a.spines.values():
+            spine.set_edgecolor(grid_color)
+
+        a.tick_params(
+            colors=text_color,
+            labelsize=9
+        )
+
+        a.xaxis.label.set_color(text_color)
+        a.yaxis.label.set_color(text_color)
+        a.title.set_color(text_color)
+
+    # =====================================================
+    # A. Rank-Rank Scatter
+    # =====================================================
+
+    if n_pairs > max_scatter_points:
+
+        sample_idx = np.random.choice(
+            n_pairs,
+            max_scatter_points,
+            replace=False
+        )
+
+    else:
+
+        sample_idx = np.arange(n_pairs)
+
+    sc = ax[0].scatter(
+        rank_Rn[sample_idx],
+        rank_R2[sample_idx],
+        c=abs_shift[sample_idx],
+        cmap=cmap_abs,
+        norm=norm_abs,
+        s=6,
+        alpha=0.7,
+        linewidths=0,
+        rasterized=True
+    )
+
+    diag = [1, n_pairs]
+
+    ax[0].plot(
+        diag,
+        diag,
+        color="#5588ff",
+        lw=1.2,
+        ls="--",
+        alpha=0.6,
+        label="perfect rank preservation"
+    )
+
+    ax[0].set_xlabel("Rank in Rⁿ")
+    ax[0].set_ylabel("Rank in R²")
+
+    ax[0].set_title(
+        f"A — Rank-rank scatter (ρ={rho:.3f})",
+        fontweight="bold"
+    )
+
+    ax[0].legend(
+        fontsize=8,
+        facecolor=axes_color,
+        labelcolor=text_color,
+        framealpha=0.8
+    )
+
+    cb = fig.colorbar(
+        sc,
+        ax=ax[0],
+        fraction=0.046,
+        pad=0.04
+    )
+
+    cb.set_label(
+        "|rank shift|",
+        color=text_color,
+        fontsize=8
+    )
+
+    ax[0].grid(
+        color=grid_color,
+        lw=0.5
+    )
+
+    # =====================================================
+    # B. Histogram
+    # =====================================================
+
+    bins = min(
+        60,
+        n_pairs // 20 + 10
+    )
+
+    n_hist, bin_edges, patches = ax[1].hist(
+        shift,
+        bins=bins,
+        edgecolor="none"
+    )
+
+    centers = (
+        bin_edges[:-1]
+        + bin_edges[1:]
+    ) / 2
+
+    for patch, center in zip(
+        patches,
+        centers
+    ):
+        patch.set_facecolor(
+            cmap_div(norm_div(center))
+        )
+        patch.set_alpha(0.85)
+
+    ax[1].axvline(
+        0,
+        color="#5588ff",
+        lw=1.5,
+        ls="--"
+    )
+
+    mean_abs = abs_shift.mean()
+
+    ax[1].set_title(
+        f"B — Rank shift distribution "
+        f"(mean |shift|={mean_abs:.1f})",
+        fontweight="bold"
+    )
+
+    ax[1].set_xlabel(
+        "Rank shift (R² − Rⁿ)"
+    )
+
+    ax[1].set_ylabel(
+        "Number of pairs"
+    )
+
+    ax[1].grid(
+        axis="y",
+        color=grid_color,
+        lw=0.5
+    )
+
+    # =====================================================
+    # C. Projection
+    # =====================================================
+
+    threshold = np.percentile(
+        abs_shift,
+        background_percentile
+    )
+
+    background_idx = np.where(
+        abs_shift < threshold
+    )[0]
+
+    if len(background_idx) > max_background_lines:
+
+        background_idx = np.random.choice(
+            background_idx,
+            max_background_lines,
+            replace=False
+        )
+
+    # ---- background lines ----
+
+    segments = []
+
+    for idx in background_idx:
+
+        i, j = pairs[idx]
+
+        segments.append([
+            X_R2[i],
+            X_R2[j]
+        ])
+
+    lc = LineCollection(
+        segments,
+        colors="#333655",
+        linewidths=0.3,
+        alpha=0.25
+    )
+
+    ax[2].add_collection(lc)
+
+    # ---- top-k disrupted ----
+
+    worst_idx = np.argsort(
+        abs_shift
+    )[::-1][:top_k]
+
+    top_segments = []
+    top_colors = []
+
+    for idx in worst_idx:
+
+        i, j = pairs[idx]
+
+        top_segments.append([
+            X_R2[i],
+            X_R2[j]
+        ])
+
+        top_colors.append(
+            cmap_div(
+                norm_div(
+                    shift[idx]
+                )
+            )
+        )
+
+    lc_top = LineCollection(
+        top_segments,
+        colors=top_colors,
+        linewidths=2.0,
+        alpha=0.9
+    )
+
+    ax[2].add_collection(lc_top)
+
+    # ---- points ----
+
+    ax[2].scatter(
+        X_R2[:, 0],
+        X_R2[:, 1],
+        color="#f0e0ff",
+        s=25,
+        edgecolors="#8888bb",
+        lw=0.4,
+        zorder=5
+    )
+
+    # ---- labels (optional) ----
+
+    if show_labels:
+
+        for idx in range(len(X_R2)):
+
+            ax[2].text(
+                X_R2[idx, 0],
+                X_R2[idx, 1],
+                str(idx),
+                fontsize=6,
+                color="#ccccee",
+                ha="center",
+                va="center",
+                zorder=6
+            )
+
+    ax[2].autoscale()
+
+    ax[2].set_title(
+        f"C — Top {top_k} most disrupted pairs",
+        fontweight="bold"
+    )
+
+    ax[2].set_xlabel("R² dim 1")
+    ax[2].set_ylabel("R² dim 2")
+
+    ax[2].grid(
+        color=grid_color,
+        lw=0.4,
+        alpha=0.5
+    )
+
+    sm = plt.cm.ScalarMappable(
+        cmap=cmap_div,
+        norm=norm_div
+    )
+
+    sm.set_array([])
+
+    cb2 = fig.colorbar(
+        sm,
+        ax=ax[2],
+        fraction=0.046,
+        pad=0.04
+    )
+
+    cb2.set_label(
+        "signed rank shift",
+        color=text_color,
+        fontsize=8
+    )
+
+    # =====================================================
+    # D. CDF
+    # =====================================================
+
+    sorted_abs = np.sort(abs_shift)
+
+    cdf = (
+        np.arange(
+            1,
+            n_pairs + 1
+        )
+        / n_pairs
+    )
+
+    ax[3].plot(
+        sorted_abs,
+        cdf,
+        color="#a0d0ff",
+        lw=2
+    )
+
+    ax[3].fill_between(
+        sorted_abs,
+        cdf,
+        alpha=0.15
+    )
+
+    for pct, ls in [
+        (50, "--"),
+        (90, ":")
+    ]:
+
+        val = np.percentile(
+            abs_shift,
+            pct
+        )
+
+        ax[3].axvline(
+            val,
+            color="#ffb347",
+            lw=1.2,
+            ls=ls,
+            label=f"p{pct}={val:.0f}"
+        )
+
+    ax[3].set_title(
+        "D — Cumulative distribution",
+        fontweight="bold"
+    )
+
+    ax[3].set_xlabel("|Rank shift|")
+    ax[3].set_ylabel(
+        "Cumulative fraction"
+    )
+
+    ax[3].set_ylim(0, 1)
+
+    ax[3].legend(
+        fontsize=8,
+        facecolor=axes_color,
+        labelcolor=text_color
+    )
+
+    ax[3].grid(
+        color=grid_color,
+        lw=0.5
+    )
+
+    # =====================================================
+    # Save
+    # =====================================================
+
+    fig.suptitle(
+        "Rank-distance preservation: Rⁿ → R²",
+        fontsize=15,
+        fontweight="bold",
+        color=text_color
+    )
+
+    if save_path:
+
+        plt.savefig(
+            save_path,
+            dpi=150,
+            bbox_inches="tight",
+            facecolor=fig.get_facecolor()
+        )
+
+        print(f"Figure saved → {save_path}")
+
+    plt.show()
+
+
+#--------------------- RANK SHIFT---------------------------------------------------------
+def plot_rank_shift_with_delaunay_fast(
+    results,
+    delaunay_edges,
+    filename="rank_shift",
+    output_path=None,
+    save_format="png"
+):
+
+    # --------------------------------------------------
+    # Inputs
+    # --------------------------------------------------
+    rank_Rn = np.asarray(results["rank_Rn"])
+    shift   = np.asarray(results["shift"])
+    pairs   = np.asarray(results["pairs"])
+
+    # --------------------------------------------------
+    # Normalize edges (i < j form)
+    # --------------------------------------------------
+    delaunay_edges = np.sort(np.asarray(delaunay_edges, dtype=np.int64), axis=1)
+    pairs = np.sort(pairs, axis=1)
+
+    # --------------------------------------------------
+    # FAST EDGE MATCHING
+    # --------------------------------------------------
+    SCALE = int(1e6)
+
+    delaunay_keys = delaunay_edges[:, 0] * SCALE + delaunay_edges[:, 1]
+    pair_keys     = pairs[:, 0] * SCALE + pairs[:, 1]
+
+    delaunay_set = set(delaunay_keys)
+
+    edge_mask = np.fromiter(
+        (k in delaunay_set for k in pair_keys),
+        dtype=bool,
+        count=len(pair_keys)
+    )
+
+    # --------------------------------------------------
+    # Sort by rank
+    # --------------------------------------------------
+    idx = np.argsort(rank_Rn)
+
+    x = rank_Rn[idx]
+    y = shift[idx]
+    edge_mask = edge_mask[idx]
+
+    # --------------------------------------------------
+    # Split masks
+    # --------------------------------------------------
+    pos_mask = (~edge_mask) & (y > 0)
+    neg_mask = (~edge_mask) & (y < 0)
+    del_mask = edge_mask
+
+    # --------------------------------------------------
+    # Vectorized segment builder
+    # --------------------------------------------------
+    def build_segments(xvals, yvals):
+        return np.stack(
+            [
+                np.column_stack([xvals, np.zeros_like(yvals)]),
+                np.column_stack([xvals, yvals])
+            ],
+            axis=1
+        )
+
+    seg_pos = build_segments(x[pos_mask], y[pos_mask])
+    seg_neg = build_segments(x[neg_mask], y[neg_mask])
+    seg_del = build_segments(x[del_mask], y[del_mask])
+
+    # # --------------------------------------------------
+    # # Optional downsampling for extremely large plots
+    # # --------------------------------------------------
+    # MAX_SEGMENTS = 100000
+
+    # if len(seg_pos) > MAX_SEGMENTS:
+    #     step = max(1, len(seg_pos) // MAX_SEGMENTS)
+    #     seg_pos = seg_pos[::step]
+
+    # if len(seg_neg) > MAX_SEGMENTS:
+    #     step = max(1, len(seg_neg) // MAX_SEGMENTS)
+    #     seg_neg = seg_neg[::step]
+
+    # if len(seg_del) > MAX_SEGMENTS:
+    #     step = max(1, len(seg_del) // MAX_SEGMENTS)
+    #     seg_del = seg_del[::step]
+
+    # --------------------------------------------------
+    # Plot
+    # --------------------------------------------------
+    plt.style.use("dark_background")
+
+    fig, ax = plt.subplots(figsize=(8, 4), constrained_layout=True)
+    fig.subplots_adjust(left=0.12, right=0.98, bottom=0.12, top=0.98)
+
+    # ---------------- Positive shifts ----------------
+    if len(seg_pos):
+        lc_pos = LineCollection(
+            seg_pos,
+            colors="indianred",
+            linewidths=0.4,
+            alpha=0.6,
+            zorder=1,
+            rasterized=True
+        )
+        # lc_pos.set_rasterized(True)
+        ax.add_collection(lc_pos)
+
+    # ---------------- Negative shifts ----------------
+    if len(seg_neg):
+        lc_neg = LineCollection(
+            seg_neg,
+            colors="royalblue",
+            linewidths=0.4,
+            alpha=0.6,
+            zorder=1,
+            rasterized=True
+        )
+        # lc_neg.set_rasterized(True)
+        ax.add_collection(lc_neg)
+
+    # ---------------- Delaunay edges ----------------
+    if len(seg_del):
+        lc_del = LineCollection(
+            seg_del,
+            colors="white",
+            linewidths=0.4,
+            alpha=1.0,
+            zorder=10,
+            rasterized=True
+        )
+        # lc_del.set_rasterized(True)
+        ax.add_collection(lc_del)
+
+    # --------------------------------------------------
+    # Decorations
+    # --------------------------------------------------
+    ax.axhline(
+        0,
+        color="white",
+        linestyle="--",
+        linewidth=1
+    )
+
+    ax.set_xlabel(r"Rank in $R^n$", fontsize=14)
+    ax.set_ylabel("Rank shift", fontsize=14)
+
+    ax.set_xlim(np.min(x), np.max(x))
+    ax.set_ylim(np.min(y), np.max(y))
+
+    legend_elements = [
+        Line2D(
+            [0], [0],
+            color='indianred',
+            lw=1.5,
+            label='Positive rank shift'
+        ),
+        Line2D(
+            [0], [0],
+            color='royalblue',
+            lw=1.5,
+            label='Negative rank shift'
+        ),
+        Line2D(
+            [0], [0],
+            color='white',
+            lw=1.5,
+            label='Delaunay edges'
+        )
+    ]
+
+    ax.legend(
+        handles=legend_elements,
+        loc='upper right',
+        frameon=True,
+        fontsize=12
+    )
+
+    # ax.autoscale()
+    # plt.tight_layout()
+
+    # --------------------------------------------------
+    # Save / Show
+    # --------------------------------------------------
+    if output_path:
+
+        os.makedirs(output_path, exist_ok=True)
+
+        base = os.path.join(output_path, filename)
+
+        # User requested format
+        fig.savefig(
+            f"{base}.{save_format}",
+            dpi=300,
+            bbox_inches="tight"
+        )
+
+        # # Compact PDF (recommended)
+        # plt.savefig(
+        #     f"{base}.pdf",
+        #     bbox_inches="tight"
+        # )
+
+        # # Compact EPS
+        # fig.savefig(
+        #     f"{base}.eps",
+        #     format="eps",
+        #     dpi=150,
+        #     bbox_inches="tight",
+        #     # bbox_inches=None,
+        #     pad_inches=0.1,
+        #     # backend="ps"
+        # )
+        plt.show()
+        plt.close()
+
+    else:
+        plt.show()
+        plt.close()
+
 

@@ -858,3 +858,116 @@ def cubic_centers_sizes(dataset):
         cube_centers = centers
 
     return cube_sizes, cube_centers
+
+####_____________ Sensitivity analysis________________________________________________________
+
+# ============================================================
+# 1. Perturb data
+# ============================================================
+def perturb_dataset(X, noise_ratio, random_state=42):
+    """
+    Add Gaussian noise proportional to each feature std.
+
+    Parameters
+    ----------
+    X : ndarray (n_samples, n_features)
+
+    noise_ratio : float
+        e.g. 0.01 means 1% of std
+
+    Returns
+    -------
+    X_perturbed
+    """
+
+    rng = np.random.default_rng(random_state)
+
+    feature_std = np.std(X, axis=0)
+
+    noise = rng.normal(
+        loc=0,
+        scale=noise_ratio * feature_std,
+        size=X.shape
+    )
+
+    return X + noise
+
+def compare_edge_sets(reference_edges, perturbed_edges):
+    
+    def edges_to_set(edges):
+        return set(map(tuple, edges))
+    
+    reference_edges = edges_to_set(reference_edges)
+    perturbed_edges = edges_to_set(perturbed_edges)
+
+    preserved = reference_edges.intersection(
+        perturbed_edges
+    )
+
+    lost = reference_edges.difference(
+        perturbed_edges
+    )
+
+    new = perturbed_edges.difference(
+        reference_edges
+    )
+
+    n_reference = len(reference_edges)
+
+    preserved_ratio = len(preserved) / n_reference
+
+    lost_ratio = len(lost) / n_reference
+
+    new_ratio = len(new) / n_reference
+
+    union_size = len(
+        reference_edges.union(perturbed_edges)
+    )
+
+    jaccard = len(preserved) / union_size
+
+    return {
+        "preserved_edges": preserved,
+        "lost_edges": lost,
+        "new_edges": new,
+
+        "preserved_ratio": preserved_ratio,
+        "lost_ratio": lost_ratio,
+        "new_ratio": new_ratio,
+
+        "jaccard_similarity": jaccard
+    }
+
+def extract_delaunay_edges_2d(tri):
+    """
+    Compute Delaunay triangulation and extract unique edges.
+
+    Parameters
+    ----------
+    X : (N,2) array
+        2D points
+
+    Returns
+    -------
+    edges : (E,2) array
+        Unique edges (node index pairs)
+    triangles : (T,3) array
+        Triangle indices (optional useful output)
+    """
+
+    # --- triangulation ---
+    # tri = Delaunay(X)
+    triangles = tri.simplices  # (T,3)
+
+    # --- extract edges from triangles ---
+    e1 = triangles[:, [0, 1]]
+    e2 = triangles[:, [1, 2]]
+    e3 = triangles[:, [2, 0]]
+
+    edges = np.vstack((e1, e2, e3))  # (3T,2)
+
+    # --- remove duplicates (order-independent) ---
+    edges = np.sort(edges, axis=1)          # ensure (i,j) == (j,i)
+    edges = np.unique(edges, axis=0)        # keep unique edges
+
+    return edges, triangles
