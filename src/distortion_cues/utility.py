@@ -4,7 +4,7 @@ from colorspacious import cspace_convert
 from matplotlib.colors import Normalize
 from sklearn.metrics import pairwise_distances
 
-from config import GLOBAL_SEED
+from distortion_cues import config as cfg
 from shapely.geometry import Polygon
 import umap
 from sklearn import manifold
@@ -523,7 +523,7 @@ def hex_to_rgb_normalized_or_nan(hex_color):
 def get_reducer(method, perplexity):
     if method == "tsne":
         reducer = manifold.TSNE(
-            n_components=2, perplexity=perplexity, init="random", random_state=GLOBAL_SEED
+            n_components=2, perplexity=perplexity, init="random", random_state=cfg.GLOBAL_SEED
         )
 
     elif method == "umap":
@@ -532,11 +532,11 @@ def get_reducer(method, perplexity):
             n_neighbors=perplexity,
             min_dist=0.1,
             init="random",
-            random_state=GLOBAL_SEED,
+            random_state=cfg.GLOBAL_SEED,
         )
 
     elif method == "pca":
-        reducer = PCA(n_components=2, random_state=GLOBAL_SEED)
+        reducer = PCA(n_components=2, random_state=cfg.GLOBAL_SEED)
 
 
     return reducer

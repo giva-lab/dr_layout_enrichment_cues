@@ -9,8 +9,6 @@ from .utility import (barycentric_interpolation,
                       hex_to_rgb_normalized_or_nan, 
                       x_y_range, get_reducer, 
                       inter_intra_cluster_pairwise_distance_optimised)
-from config import GLOBAL_SEED
-
 
 
 class ProjectionAnalysisVisualizer:

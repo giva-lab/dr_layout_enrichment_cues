@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.datasets import (fetch_openml)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (MinMaxScaler)
-from config import GLOBAL_SEED
+from distortion_cues.config import GLOBAL_SEED
 
 
 # Get the current working directory (main project folder)

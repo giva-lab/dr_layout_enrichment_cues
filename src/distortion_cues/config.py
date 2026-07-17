@@ -16,7 +16,7 @@ GLOBAL_SEED = 5
 # =============================================================================
 
 FIGSIZE = (10, 10)
-DPI = 600
+DPI = 300
 SAVE_FORMAT = "png"
 
 # =============================================================================
@@ -64,6 +64,12 @@ DEFAULT_CONFIG = {
 # =============================================================================
 # Dataset configurations
 # =============================================================================
+
+# Synthetic data configurations
+NUM_DIMENSION = 3
+POINTS_PER_CUBE = 300
+RUNTIME_REPETITION = 1  # Increase it to cacluate runtime for calculating stable runtime.
+
 
 CUBE_CONFIG = {
     "class_names": ["Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4"],
